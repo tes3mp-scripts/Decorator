@@ -1,8 +1,9 @@
-local templates = require('custom.scriptTemplater')
+local templates = require('custom.MWS-Templates.main')
 local sine = templates.mimics.sine
 local cosine = templates.mimics.cosine
 
 local decoratorConfig = {
+    showMessages = false,
     localization = {
         EnableMessage = color.Green .. "Decorator enabled, activate again for options.",
         DisableMessage = color.Green .. "Decorator disabled.",
@@ -12,6 +13,7 @@ local decoratorConfig = {
         RotateYButton = "Pitch",
         RotateZButton = "Roll",
         PauseButton = "Pause",
+        ManualButton = "Manual",
         PlaceButton = "Place",
         DisableButton = "Disable"
     },
@@ -30,7 +32,32 @@ local decoratorConfig = {
     }
 }
 
-local br = "\n"
+
+local modes = {
+    {
+        name = "pause",
+        value = -1
+    },
+    {
+        name = "position",
+        value = 0
+    },
+    {
+        name = "rotatex",
+        value = 1,
+        axis = "x"
+    },
+    {
+        name = "rotatey",
+        value = 2,
+        axis = "y"
+    },
+    {
+        name = "rotatez",
+        value = 3,
+        axis = "z"
+    }
+}
 
 local scripts = {
 script_decorator_position = templates.process([[
@@ -41,49 +68,95 @@ begin script_decorator_position
     float sx
     float sz
     float cz
-    float dist
-    float height
+    float r
+    float r0
+    short mode
     ``SINE``
     ``COSINE``
 
-    set dist to (]] .. decoratorConfig.position.distance .. [[)
-    set height to (]] .. decoratorConfig.position.height .. [[)
+    if (script_decorator_globals.mode != mode)
+        set r0 to 0
+    endif
 
-    set px to ( player->GetAngle X )
-    set pz to ( player->GetAngle Z )
+    if (script_decorator_globals.mode == 0)
+        set px to ( player->GetAngle X )
+        set pz to ( player->GetAngle Z )
+        set SINE_in to px
+        `SINE`
+        set sx to SINE_out
 
-    set SINE_in to px
-    `SINE`
-    set sx to SINE_out
+        set SINE_in to pz
+        `SINE`
+        set sz to SINE_out
 
-    set SINE_in to pz
-    `SINE`
-    set sz to SINE_out
+        set COSINE_in to pz
+        `COSINE`
+        set cz to COSINE_out
 
-    set COSINE_in to pz
-    `COSINE`
-    set cz to COSINE_out
+        set px to ( {{position.distance}} * sz + player->GetPos X )
+        set py to ( {{position.distance}} * cz + player->GetPos Y )
+        set pz to ( {{position.height}} * (1 - sx) + player->GetPos Z )
 
-    set px to ( dist * sz + player->GetPos X )
-    set py to ( dist * cz + player->GetPos Y )
-    set pz to ( height * (1 - sx) + player->GetPos Z )
+        {{#position.feedback}}
+        MessageBox "%.3f %.3f %.3f", px, py, pz
+        {{/position.feedback}}
 
-    ]]
-.. (decoratorConfig.position.feedback and [[MessageBox "%.3f %.3f %.3f", px, py, pz]] or "") .. br ..
-[[
-    SetPos X px
-    SetPos Y py
-    SetPos Z pz
+        SetPos X px
+        SetPos Y py
+        SetPos Z pz
+    endif
+    {{#modes}}
+    {{#axis}}
+    if (script_decorator_globals.mode == {{value}})
+        set px to GetAngle x
+        set py to GetAngle y
+        set pz to GetAngle z
+
+        set r to ( player->GetAngle Z )
+        set r to ( r * {{rotation.sensitivity}} )
+
+        set p{{axis}} to (r - r0) / GetSecondsPassed
+        set r0 to r
+
+        RotateWorld {{axis}} p{{axis}}
+        ;SetAngle {{axis}} r
+
+        ;set p{{axis}} to r
+        ;SetAngle x px
+        ;SetAngle y py
+        ;SetAngle z pz
+
+        {{#rotation.feedback}}
+        set r to (r * `PI` / 180)
+        MessageBox "%.3f", r
+        {{/rotation.feedback}}
+    endif
+    {{/axis}}
+    {{/modes}}
+
+    set mode to script_decorator_globals.mode
+
+    set px to GetAngle x
+    set py to GetAngle y
+    set pz to GetAngle z
+    set px to px * `PI` / 180
+    set py to py * `PI` / 180
+    set pz to pz * `PI` / 180
+    MessageBox "%.3f %.3f %.3f", px, py, pz
 
     `noPickUp`
 end script_decorator_position
-]]),
+]], {
+    position = decoratorConfig.position,
+    rotation = decoratorConfig.rotation,
+    modes = modes
+}),
 
-script_decorator_pause = templates.process([[
-begin script_decorator_pause
-    `noPickUp`
-end script_decorator_pause
-]]),
+script_decorator_globals = [[
+begin script_decorator_globals
+    short mode
+end script_decorator_globals
+]],
 
 script_decorator_menu = templates.process([[
 begin script_decorator_menu
@@ -92,47 +165,20 @@ end script_decorator_menu
 ]])
 }
 
-for _, axe in pairs({'x', 'y', 'z'}) do
-    local axe1 = 'x'
-    local axe2 = 'y'
-    if axe == 'x' then
-        axe1 = 'y'
-        axe2 = 'z'
-    elseif axe == 'y' then
-        axe2 = 'z'
-    end
-    scripts["script_decorator_rotate" .. axe] = templates.process(
-[[
-begin script_decorator_rotate]] .. axe .. br .. [[
-    float r
-    float r1
-    float r2
-    ``SINE``
-    ``COSINE``
-
-    SetAngle ]] .. axe .. [[ 0
-
-    set r2 to ( GetAngle ]] .. axe2 .. [[)
-    set r1 to ( GetAngle ]] .. axe1 .. [[)
-
-    set r to ( player->GetAngle X )
-    set r to ( ( player->GetAngle Z ) )
-    set r to ( r * (]] .. decoratorConfig.rotation.sensitivity .. [[) )
-]]
-.. (decoratorConfig.rotation.feedback and [[MessageBox "%.3f", r]] or "") .. br ..
-[[
-    set SINE_in to r
-    `SINE`
-    set sr to SINE_out
-    set r to ()
-    SetAngle ]] .. axe1 .. [[ r1
-    SetAngle ]] .. axe2 .. [[ r2    
-    SetAngle ]] .. axe .. [[ r
-
-    `noPickUp`
-end script_decorator_rotate]] .. axe .. br
-)
+for _, mode in pairs(modes) do
+    scripts["script_decorator_switch_" .. mode.name] = templates.process(
+    [[
+    begin script_decorator_switch_{{name}}
+        set script_decorator_globals.mode to {{value}}
+        stopscript script_decorator_switch_{{name}}
+    end script_decorator_switch_{{name}}
+    ]],
+    mode)
 end
+
+--[[for _, script in pairs(scripts) do
+    print(script)
+end]]
 
 local MENU_REF_ID = "decorator_menu"
 local MARKER_REF_ID = "decorator_marker"
@@ -154,33 +200,20 @@ local function CalculatePosition(pid, objectLoc)
 end
 
 
-local function CalculateRotation(pid, objectLoc, axe)
+local function CalculateRotation(pid, objectLoc, axis)
     Players[pid]:SaveCell()
     local playerLoc = Players[pid].data.location
-    local rot1 = "rotX"
-    local rot2 = "rotY"
-    if axe == rot1 then
-        rot1 = "rotZ"
-    end
-    if axe == rot2 then
-        rot2 = "rotZ"
-    end
-    local rotate = (playerLoc.rotZ) * decoratorConfig.rotation.sensitivity
-    objectLoc[axe] = rotate
-
+    local rotate = (playerLoc.rotZ) * decoratorConfig.rotation.sensitivity-- % (math.pi * 2)
+    --[[if rotate > math.pi then
+        rotate = math.pi - rotate
+    end]]
+    objectLoc[axis] = rotate
+    tes3mp.SendMessage(pid, "ROTATE " .. rotate .. "\n")
     return objectLoc
 end
 
-local function GetDecoratorScriptRefId(suffix)
-    return "script_decorator_" .. suffix
-end
-
 local function PlaceAtLocationForPlayer(pid, cellDescription, location, refId)
-    local mpNum = WorldInstance:GetCurrentMpNum() + 1
-    WorldInstance:SetCurrentMpNum(mpNum)
-    tes3mp.SetCurrentMpNum(mpNum)
-
-    local uniqueIndex =  0 .. "-" .. mpNum
+    local uniqueIndex = WorldInstance:GenerateUniqueIndex()
     local item = {
         uniqueIndex = uniqueIndex,
         refId = refId,
@@ -189,7 +222,7 @@ local function PlaceAtLocationForPlayer(pid, cellDescription, location, refId)
     LoadedCells[cellDescription]:LoadObjectsPlaced(
         pid,
         { [item.uniqueIndex] = { location = item.location, refId = item.refId, packetType = "place" } },
-        {item.uniqueIndex},
+        { item.uniqueIndex },
         false
     )
     return item
@@ -198,7 +231,7 @@ end
 local function DeleteForPlayer(pid, cellDescription, uniqueIndex, refId)
     LoadedCells[cellDescription]:LoadObjectsDeleted(
         pid,
-        { [uniqueIndex] = { refId = refId }},
+        { [uniqueIndex] = { refId = refId } },
         { uniqueIndex },
         false
     )
@@ -207,8 +240,9 @@ end
 local function UpdatePlacingLocationForPlayer(pid)
     local cellDescription = tes3mp.GetCell(pid)
     local item = placingItems[pid]
-    DeleteForPlayer(pid, cellDescription, item.uniqueIndex, item.refId)
+    tableHelper.print(item)
     placingItems[pid] = PlaceAtLocationForPlayer(pid, cellDescription, item.location, item.refId)
+    DeleteForPlayer(pid, cellDescription, item.uniqueIndex, item.refId)
 end
 
 local function RotateForPlayer(pid, index, delta)
@@ -265,17 +299,17 @@ local function ReturnOriginal(pid, cellDescription)
     originals[pid] = nil
 end
 
-local function UpdatePlacingLocation(pid)
+local function CalculatePlacingLocation(pid)
     local aMode = activeMode[pid]
     local item = placingItems[pid]
     if aMode == "position" then
-        item.location = CalculatePosition(pid, item.location)
+        CalculatePosition(pid, item.location)
     elseif aMode == "rotatex" then
-        item.location = CalculateRotation(pid, item.location, "rotX")
+        CalculateRotation(pid, item.location, "rotX")
     elseif aMode == "rotatey" then
-        item.location = CalculateRotation(pid, item.location, "rotY")
+        CalculateRotation(pid, item.location, "rotY")
     elseif aMode == "rotatez" then
-        item.location = CalculateRotation(pid, item.location, "rotZ")
+        CalculateRotation(pid, item.location, "rotZ")
     else
         return false
     end
@@ -283,29 +317,26 @@ local function UpdatePlacingLocation(pid)
 end
 
 local function SwitchMode(pid, mode)
-    if activeMode[pid] and placingItems[pid] then
-        UpdatePlacingLocation(pid)
-        local item = placingItems[pid]
-        local baseId = originals[pid][next(originals[pid])].refId
-        local records = {
-            [item.refId] = {
-                baseId = baseId,
-                script = GetDecoratorScriptRefId(mode)
-            }
-        }
-        GHOST_RECORD_STORE:LoadRecords(pid, records, { item.refId }, false)
-        UpdatePlacingLocationForPlayer(pid)
+    logicHandler.RunConsoleCommandOnPlayer(pid,
+        "StartScript script_decorator_switch_" .. mode)
+    if placingItems[pid] then
+        CalculatePlacingLocation(pid)
+        --UpdatePlacingLocationForPlayer(pid)
     end
-
     activeMode[pid] = mode
 end
 
 local function PlaceOriginal(pid)
     if placingItems[pid] then
-        UpdatePlacingLocation(pid)
+        CalculatePlacingLocation(pid)
         local item = placingItems[pid]
         local originalObjects = originals[pid]
         local originalObject = originalObjects[next(originalObjects)]
+        local loc = item.location
+        tes3mp.SendMessage(pid,
+            "PLACE " .. loc.rotX .. ", " .. loc.rotY .. ", " .. loc.rotZ .. "\n"
+        , false)
+        tableHelper.print(item.location)
         originalObject.location = item.location
         local cellDescription = tes3mp.GetCell(pid)
 
@@ -358,67 +389,76 @@ local function ShowManualMenu(pid)
             ShowDecoratorMenu(pid)
         else
             local command = string.sub(result, 1, 1)
-            local axe = string.sub(result, 2, 2)
+            local axis = string.sub(result, 2, 2)
             local direction = string.sub(result, 3, 3) == '+' and 1 or -1
             if command == "R" then
-                RotateForPlayer(pid, "rot" .. string.upper(axe), direction * 5 * 2 * math.pi / 360)
+                RotateForPlayer(pid, "rot" .. string.upper(axis), direction * 5 * 2 * math.pi / 360)
             end
             ShowManualMenu(pid)
         end
     end)
 end
 
+local function ShowAxisMenu(pid, axis)
+    async.Wrap(function()
+
+    end)
+end
+
 local function ShowDecoratorMenu(pid)
     if not enabled[pid] then
         enabled[pid] = true
-        tes3mp.SendMessage(pid, decoratorConfig.localization.EnableMessage .. "\n")
-    else
-        async.Wrap(function()
-            local buttons = {}
-            local buttonsMap = {}
-
-            table.insert(buttons, decoratorConfig.localization.PositionButton)
-            table.insert(buttonsMap, 'position')
-
-            table.insert(buttons, decoratorConfig.localization.RotateXButton)
-            table.insert(buttonsMap, 'rotatex')
-            table.insert(buttons, decoratorConfig.localization.RotateYButton)
-            table.insert(buttonsMap, 'rotatey')
-            table.insert(buttons, decoratorConfig.localization.RotateZButton)
-            table.insert(buttonsMap, 'rotatez')
-
-            table.insert(buttons, decoratorConfig.localization.PauseButton)
-            table.insert(buttonsMap, 'pause')
-
-            if not placingItems[pid] then
-                table.insert(buttons, decoratorConfig.localization.DisableButton)
-                table.insert(buttonsMap, 'disable')
-            else
-                table.insert(buttons, "Manual")
-                table.insert(buttonsMap, 'manual')
-                table.insert(buttons, decoratorConfig.localization.PlaceButton)
-                table.insert(buttonsMap, 'place')
-            end
-
-            local buttonNumber = guiHelper.CustomMessageBoxAsync(pid, buttons, decoratorConfig.localization.Label)
-            if buttonNumber == nil then
-                return
-            end
-            local result = buttonsMap[buttonNumber]
-            if result == 'disable' then
-                enabled[pid] = false
-                tes3mp.SendMessage(pid, decoratorConfig.localization.DisableMessage .. "\n")
-            elseif result == 'place' then
-                PlaceOriginal(pid)
-            elseif result == 'manual' then
-                SwitchMode(pid, 'pause')
-                ShowManualMenu(pid)
-            else
-                SwitchMode(pid, result)
-            end
-        end)
+        if decoratorConfig.showMessages then
+            tes3mp.SendMessage(pid, decoratorConfig.localization.EnableMessage .. "\n")
+        end
     end
-    
+    async.Wrap(function()
+        local buttons = {}
+        local buttonsMap = {}
+
+        table.insert(buttons, decoratorConfig.localization.PositionButton)
+        table.insert(buttonsMap, 'position')
+
+        table.insert(buttons, decoratorConfig.localization.RotateXButton)
+        table.insert(buttonsMap, 'rotatex')
+        table.insert(buttons, decoratorConfig.localization.RotateYButton)
+        table.insert(buttonsMap, 'rotatey')
+        table.insert(buttons, decoratorConfig.localization.RotateZButton)
+        table.insert(buttonsMap, 'rotatez')
+
+        table.insert(buttons, decoratorConfig.localization.PauseButton)
+        table.insert(buttonsMap, 'pause')
+
+        if not placingItems[pid] then
+            table.insert(buttons, decoratorConfig.localization.DisableButton)
+            table.insert(buttonsMap, 'disable')
+        else
+            table.insert(buttons, decoratorConfig.localization.ManualButton)
+            table.insert(buttonsMap, 'manual')
+            table.insert(buttons, decoratorConfig.localization.PlaceButton)
+            table.insert(buttonsMap, 'place')
+        end
+
+        local buttonNumber = guiHelper.CustomMessageBoxAsync(pid, buttons, decoratorConfig.localization.Label)
+        if buttonNumber == nil then
+            return
+        end
+        local result = buttonsMap[buttonNumber]
+        if result == 'disable' then
+            enabled[pid] = false
+            PlaceOriginal(pid)
+            if decoratorConfig.showMessages then
+                tes3mp.SendMessage(pid, decoratorConfig.localization.DisableMessage .. "\n")
+            end
+        elseif result == 'place' then
+            PlaceOriginal(pid)
+        elseif result == 'manual' then
+            SwitchMode(pid, 'pause')
+            async.Wrap(function() ShowManualMenu(pid) end)
+        else
+            SwitchMode(pid, result)
+        end
+    end)
 end
 
 customEventHooks.registerHandler('OnServerPostInit', function(eventStatus)
@@ -466,15 +506,15 @@ customEventHooks.registerValidator('OnCellUnload', function(eventStatus, pid, ce
     end
 end)
 
-customEventHooks.registerValidator('OnPlayerCellChange', function(eventStatus, pid, cellDescription)
+--[[customEventHooks.registerValidator('OnPlayerCellChange', function(eventStatus, pid, cellDescription)
     if eventStatus.validCustomHandlers then
         if placingItems[pid] then
-            if LoadedCells[cellDescription] then
+            if LoadedCells[cellDescription] and not LoadedCells[cellDescription].isExterior then
                 ReturnOriginal(pid, cellDescription)
             end
         end
     end
-end)
+end)]]
 
 customEventHooks.registerValidator('OnPlayerDisconnect', function(eventStatus, pid)
     if eventStatus.validCustomHandlers then
@@ -496,20 +536,24 @@ customEventHooks.registerValidator('OnObjectPlace', function(eventStatus, pid, c
             DeleteForPlayer(pid, cellDescription, uniqueIndex, MENU_REF_ID)
             return customEventHooks.makeEventStatus(false, false)
         elseif enabled[pid] and not placingItems[pid] then
+            local decoratorEventStatus = customEventHooks.triggerValidators("Decorator_OnActivate",
+                { pid, cellDescription, object })
+            if not decoratorEventStatus.validDefaultHandler then return end
+
             local refId = GHOST_RECORD_STORE:GenerateRecordId()
             local records = {
                 [refId] = {
                     baseId = object.refId,
-                    script = activeMode[pid] and GetDecoratorScriptRefId(activeMode[pid]) or ""
+                    script = "script_decorator_position"
                 }
             }
             GHOST_RECORD_STORE:LoadRecords(pid, records, {refId}, false)
-            local location = object.location
-            location.rotX = 0
-            location.rotY = 0
-            location.rotZ = 0
-            placingItems[pid] = PlaceAtLocationForPlayer(pid, cellDescription, location, refId)
+            placingItems[pid] = PlaceAtLocationForPlayer(pid, cellDescription, object.location, refId)
+            DeleteForPlayer(pid, cellDescription, uniqueIndex, object.refId)
             originals[pid] = objects
+
+            customEventHooks.triggerHandlers("Decorator_OnActivate", decoratorEventStatus,
+                { pid, cellDescription, object })
             return customEventHooks.makeEventStatus(false, false)
         end
     end
