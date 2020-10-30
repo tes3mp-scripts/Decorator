@@ -45,17 +45,20 @@ local modes = {
     {
         name = "rotatex",
         value = 1,
-        axis = "x"
+        axis = "x",
+        inverse = "u"
     },
     {
         name = "rotatey",
         value = 2,
-        axis = "y"
+        axis = "y",
+        inverse = "v"
     },
     {
         name = "rotatez",
         value = 3,
-        axis = "z"
+        axis = "z",
+        inverse = "w"
     }
 }
 
@@ -108,18 +111,18 @@ begin script_decorator_position
     {{#modes}}
     {{#axis}}
     if (script_decorator_globals.mode == {{value}})
-        set px to GetAngle x
-        set py to GetAngle y
-        set pz to GetAngle z
+        ;set px to GetAngle x
+        ;set py to GetAngle y
+        ;set pz to GetAngle z
 
         set r to ( player->GetAngle Z )
         set r to ( r * {{rotation.sensitivity}} )
 
-        set p{{axis}} to (r - r0) / GetSecondsPassed
-        set r0 to r
+        ;set p{{axis}} to (r - r0) / GetSecondsPassed
+        ;set r0 to r
+        ;RotateWorld {{axis}} p{{axis}}
 
-        RotateWorld {{axis}} p{{axis}}
-        ;SetAngle {{axis}} r
+        SetAngle {{axis}} r
 
         ;set p{{axis}} to r
         ;SetAngle x px
@@ -135,7 +138,7 @@ begin script_decorator_position
     {{/modes}}
 
     set mode to script_decorator_globals.mode
-
+`
     set px to GetAngle x
     set py to GetAngle y
     set pz to GetAngle z
@@ -332,11 +335,6 @@ local function PlaceOriginal(pid)
         local item = placingItems[pid]
         local originalObjects = originals[pid]
         local originalObject = originalObjects[next(originalObjects)]
-        local loc = item.location
-        tes3mp.SendMessage(pid,
-            "PLACE " .. loc.rotX .. ", " .. loc.rotY .. ", " .. loc.rotZ .. "\n"
-        , false)
-        tableHelper.print(item.location)
         originalObject.location = item.location
         local cellDescription = tes3mp.GetCell(pid)
 
